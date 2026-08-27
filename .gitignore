@@ -1,0 +1,9 @@
+# never commit these
+.env
+coach.db
+coach.db-journal
+.venv/
+__pycache__/
+*.pyc
+.playwright-cli/
+.DS_Store
