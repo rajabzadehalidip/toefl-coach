@@ -336,3 +336,7 @@ def set_meta(key: str, value: str) -> None:
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (key, value),
     )
+
+
+def del_meta(key: str) -> None:
+    _run("DELETE FROM meta WHERE key = ?", (key,))

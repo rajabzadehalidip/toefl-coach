@@ -151,7 +151,22 @@ tab_practice, tab_drills, tab_progress, tab_ledger = st.tabs(
     ["✍️ Practice", "🎯 Drills", "📈 Progress", "🧠 Profile & Ledger"])
 
 with tab_practice:
-    if n_essays == 0:
+    # ---- restore an in-progress task after a refresh / new session ----
+    if "task" not in st.session_state:
+        saved = db.get_meta("active_task")
+        if saved:
+            try:
+                data = json.loads(saved)
+                st.session_state.task = data["task"]
+                st.session_state.task_started = float(data["started"])
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                db.del_meta("active_task")
+    if "draft" not in st.session_state:
+        saved_draft = db.get_meta("active_draft")
+        if saved_draft:
+            st.session_state["draft"] = saved_draft
+
+    if n_essays == 0 and "task" not in st.session_state:
         st.info("🏁 Your first essay doubles as the **diagnostic** — it builds your "
                 "weakness map and error ledger, so make it a real effort.")
 
@@ -185,6 +200,31 @@ with tab_practice:
         st.session_state.pop("draft", None)
         for k in [k for k in st.session_state if k.startswith("model_answer_")]:
             st.session_state.pop(k)
+        # Persist so a refresh (or another device) resumes exactly here.
+        db.set_meta("active_task", json.dumps(
+            {"task": task, "started": st.session_state.task_started}))
+        db.set_meta("active_draft", "")
+
+    def _clear_task() -> None:
+        for k in ("task", "task_started", "draft"):
+            st.session_state.pop(k, None)
+        db.del_meta("active_task")
+        db.del_meta("active_draft")
+
+    @st.fragment(run_every=1)
+    def _countdown() -> None:
+        """Live clock — reruns every second without touching the rest of the page."""
+        kind = st.session_state.get("task", {}).get("_type", "custom")
+        limit = practice.TASK_DURATIONS.get(kind, 25) * 60
+        started = st.session_state.get("task_started", time.time())
+        remaining = max(0, int(limit - (time.time() - started)))
+        words = len((st.session_state.get("draft") or "").split())
+        clock = (
+            f"⏱ **{remaining // 60}:{remaining % 60:02d} left** of {limit // 60} min"
+            if remaining > 0
+            else "⏰ **Time's up** — wrap up your last sentence and submit"
+        )
+        st.caption(f"{clock} · {words} words written")
 
     if task_type != "custom":
         if st.button("🎲 Generate task", type="primary"):
@@ -205,45 +245,52 @@ with tab_practice:
     if task:
         body = practice.format_task(task)
         kind = task.get("_type", "custom")
-        limit = practice.TASK_DURATIONS.get(kind, 25) * 60
-        elapsed = time.time() - st.session_state.get("task_started", time.time())
-        remaining = max(0, int(limit - elapsed))
-        st.caption(
-            f"⏱ **{remaining // 60}:{remaining % 60:02d} remaining** of {limit // 60} min "
-            "· the clock refreshes whenever the page updates"
-        )
+
+        _countdown()
+
         with st.container(border=True):
             st.markdown(body)
 
         draft = st.text_area("✏️ Your response", height=320, key="draft")
-        st.caption(f"{len((draft or '').split())} words · TOEFL discussion answers are usually 100+")
+        db.set_meta("active_draft", draft or "")  # autosave on every rerun
+        st.caption("💾 Your task and draft survive a page refresh — close the tab "
+                   "and come back any time.")
 
-        if st.button("Submit for grading", type="primary",
-                     disabled=not draft or len(draft.split()) < 20):
-            duration = time.time() - st.session_state.get("task_started", time.time())
-            try:
-                with st.spinner("Grading against the ETS rubric + extracting errors (≈30–60 s)..."):
-                    result = grading.grade_essay(api_key, model, kind, body, draft)
-                    metrics = lexstats.analyze(draft)
-                    essay_id = db.insert_essay(
-                        kind, task.get("title", "Practice"), body, draft, duration,
-                        result["scores"], metrics, result.get("overused_words"),
-                    )
-                    db.insert_errors(essay_id, result.get("errors", []))
+        b1, b2 = st.columns([1, 3])
+        discard = b1.button("🗑 Discard task")
+        submit = b2.button("Submit for grading", type="primary")
+
+        if discard:
+            _clear_task()
+            st.rerun()
+        if submit:
+            if len((draft or "").split()) < 20:
+                st.warning("Write at least 20 words first — give the grader something "
+                           "to work with. Nothing is lost; keep editing and submit again.")
+            else:
+                duration = time.time() - st.session_state.get("task_started", time.time())
                 try:
-                    grading.update_profile(api_key, model)
-                except LLMError:
-                    st.caption("(Profile auto-update failed — the graded essay was still saved.)")
-                st.session_state.last_result = {
-                    "result": result, "metrics": metrics, "essay_id": essay_id,
-                    "prompt_body": body, "task_type": kind,
-                }
-                st.session_state.pop("task", None)
-                st.session_state.pop("task_started", None)
-                st.session_state.pop("draft", None)
-                st.rerun()
-            except LLMError as e:
-                st.error(f"Grading failed: {e}")
+                    with st.spinner("Grading against the ETS rubric + extracting errors (≈30–60 s)..."):
+                        result = grading.grade_essay(api_key, model, kind, body, draft)
+                        metrics = lexstats.analyze(draft)
+                        essay_id = db.insert_essay(
+                            kind, task.get("title", "Practice"), body, draft, duration,
+                            result["scores"], metrics, result.get("overused_words"),
+                        )
+                        db.insert_errors(essay_id, result.get("errors", []))
+                    try:
+                        grading.update_profile(api_key, model)
+                    except LLMError:
+                        st.caption("(Profile auto-update failed — the graded essay was still saved.)")
+                    st.session_state.last_result = {
+                        "result": result, "metrics": metrics, "essay_id": essay_id,
+                        "prompt_body": body, "task_type": kind,
+                    }
+                    _clear_task()
+                    st.rerun()
+                except LLMError as e:
+                    st.error(f"Grading failed: {e} — your essay is still here, "
+                             "nothing was lost. Try again.")
     elif reuse != "— write a new one —":
         essay_id = int(reuse.split(" · ")[0].lstrip("#"))
         essay = db.get_essay(essay_id)
