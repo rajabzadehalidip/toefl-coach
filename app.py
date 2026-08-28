@@ -1,6 +1,7 @@
 """TOEFL Writing Coach — Streamlit app.
 
 Run with:  streamlit run app.py
+Design tokens and CSS live in coach/ui.py (study purple / Lora + Raleway).
 """
 
 import json
@@ -13,10 +14,13 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from coach import __version__, db, drills, grading, insights, lexstats, practice
+from coach import ui as tfc
 from coach.llm import LLMError
 
 st.set_page_config(page_title="TOEFL Writing Coach", page_icon="✍️", layout="wide")
+tfc.inject_css()
 db.init_db()
+
 
 def _get_secret_or_env(name: str, default: str = "") -> str:
     """Read a config value from st.secrets (Streamlit Cloud) or the
@@ -38,24 +42,25 @@ for _name in ("TURSO_DB_URL", "TURSO_DB_TOKEN"):
     if _val:
         os.environ.setdefault(_name, _val)
 
-st.title("✍️ TOEFL Writing Coach")
+st.title("TOEFL Writing Coach")
 st.caption(
-    "Your personal agentic writing tutor: grades against the ETS rubric, keeps an error "
-    "ledger, drills your own mistakes back at you on a spaced-repetition schedule, and "
-    "remembers your strengths and weaknesses across sessions."
+    "Your personal AI writing tutor — strict ETS-rubric grading, a growing error "
+    "ledger, spaced-repetition drills built from your own mistakes, and feedback "
+    "that sharpens with every essay."
 )
 
 # ------------------------------------------------------------------ sidebar
 
 with st.sidebar:
+    st.markdown(tfc.brand_block(__version__), unsafe_allow_html=True)
     api_key = st.text_input(
         "OpenRouter API key", type="password",
         value=_get_secret_or_env("OPENROUTER_API_KEY"),
     )
     model = st.text_input("Model (OpenRouter slug)", value=DEFAULT_MODEL)
     st.caption(
-        "Get a key at [openrouter.ai/keys](https://openrouter.ai/keys) — any model works, "
-        "e.g. `anthropic/claude-sonnet-4.5`, `openai/gpt-4.1`, `google/gemini-2.5-pro`."
+        "Get a key at [openrouter.ai/keys](https://openrouter.ai/keys) — any model "
+        "works, e.g. `anthropic/claude-sonnet-4.5`, `openai/gpt-4.1`."
     )
     st.divider()
     n_essays = len(db.list_essays(1000))
@@ -64,9 +69,9 @@ with st.sidebar:
     c1.metric("Essays", n_essays)
     c2.metric("Drills due", n_due)
     if db.storage_backend() == "turso":
-        st.caption(f"🌩 Storage: Turso cloud DB — memory survives restarts · v{__version__}")
+        st.caption("Storage: Turso cloud DB — memory survives restarts")
     else:
-        st.caption(f"💾 Storage: local `coach.db` — all data stays on this machine · v{__version__}")
+        st.caption("Storage: local `coach.db` — all data stays on this machine")
 
 
 def weakness_summary() -> str:
@@ -90,22 +95,17 @@ def weakness_summary() -> str:
     return "\n\n".join(parts)
 
 
-# ------------------------------------------------------------------ practice
+# ------------------------------------------------------------------ feedback
 
 def _render_feedback(lr: dict, api_key: str, model: str) -> None:
     r, scores, metrics = lr["result"], lr["result"]["scores"], lr["metrics"]
     st.divider()
-    st.subheader(f"📋 Feedback — essay #{lr['essay_id']}")
+    st.subheader(f"Feedback — essay #{lr['essay_id']}")
 
     prev = db.previous_overall(lr["essay_id"])
-    cols = st.columns(4)
-    for col, (label, key) in zip(
-        cols,
-        [("Overall", "overall"), ("Development", "development"),
-         ("Organization", "organization"), ("Language use", "language")],
-    ):
-        delta = round(scores[key] - prev, 1) if prev is not None else None
-        col.metric(label, f"{scores[key]:.1f} / 5", delta=delta)
+    st.markdown(tfc.score_cards(scores, prev), unsafe_allow_html=True)
+    st.caption("Scores follow the official ETS rubric (0–5). "
+               "4.0+ strong · 3.0–3.9 developing · below 3.0 needs work.")
 
     st.markdown(r.get("summary", ""))
 
@@ -117,7 +117,8 @@ def _render_feedback(lr: dict, api_key: str, model: str) -> None:
 
     errs = r.get("errors") or []
     if errs:
-        st.markdown(f"**📒 Error ledger — {len(errs)} entries added** (they come back as drills 🔁)")
+        st.markdown(f"**Error ledger — {len(errs)} entries added** "
+                    "(they come back as review drills)")
         st.dataframe(
             pd.DataFrame([{
                 "category": e.get("category"),
@@ -137,12 +138,12 @@ def _render_feedback(lr: dict, api_key: str, model: str) -> None:
         st.info(f"**Overused words** (tracked across essays): {badges}")
 
     if r.get("nice_phrases"):
-        st.caption("🌟 Nice phrases: " + " · ".join(f"“{p}”" for p in r["nice_phrases"][:5]))
+        st.caption("Well-used phrases: " + " · ".join(f"“{p}”" for p in r["nice_phrases"][:5]))
 
-    st.caption("📊 " + lexstats.format_metrics(metrics))
+    st.caption(lexstats.format_metrics(metrics))
 
     ma_key = f"model_answer_{lr['essay_id']}"
-    if st.button("💡 Show a 5/5 model response"):
+    if st.button("Show a 5/5 model response"):
         try:
             with st.spinner("Writing a model response..."):
                 answer = st.session_state.get(ma_key) or grading.model_answer(
@@ -154,7 +155,9 @@ def _render_feedback(lr: dict, api_key: str, model: str) -> None:
 
 
 tab_practice, tab_drills, tab_progress, tab_ledger = st.tabs(
-    ["✍️ Practice", "🎯 Drills", "📈 Progress", "🧠 Profile & Ledger"])
+    ["Practice", "Drills", "Progress", "Profile & Ledger"])
+
+# ------------------------------------------------------------------ practice
 
 with tab_practice:
     # ---- restore an in-progress task after a refresh / new session ----
@@ -173,11 +176,11 @@ with tab_practice:
             st.session_state["draft"] = saved_draft
 
     if n_essays == 0 and "task" not in st.session_state:
-        st.info("🏁 Your first essay doubles as the **diagnostic** — it builds your "
+        st.info("Your first essay doubles as the **diagnostic** — it builds your "
                 "weakness map and error ledger, so make it a real effort.")
 
     plan = insights.todays_plan()
-    with st.expander("🗓 Today's plan", expanded="task" not in st.session_state):
+    with st.expander("Today's plan", expanded="task" not in st.session_state):
         st.markdown(plan)
 
     left, right = st.columns([2, 3])
@@ -229,15 +232,16 @@ with tab_practice:
         started = st.session_state.get("task_started", time.time())
         remaining = max(0, int(limit - (time.time() - started)))
         words = len((st.session_state.get("draft") or "").split())
-        clock = (
-            f"⏱ **{remaining // 60}:{remaining % 60:02d} left** of {limit // 60} min"
-            if remaining > 0
-            else "⏰ **Time's up** — wrap up your last sentence and submit"
-        )
-        st.caption(f"{clock} · {words} words written")
+        if remaining > 0:
+            clock = (f"Time remaining **{remaining // 60}:{remaining % 60:02d}** "
+                     f"of {limit // 60} min")
+        else:
+            clock = "**Time's up** — wrap up your last sentence and submit"
+        st.markdown(f"<div class='tfc-label' style='margin:0 0 6px'>{clock}"
+                    f" &nbsp;·&nbsp; {words} words written</div>", unsafe_allow_html=True)
 
     if task_type != "custom":
-        if st.button("🎲 Generate task", type="primary"):
+        if st.button("Generate task", type="primary"):
             try:
                 with st.spinner("Designing a task targeted at your weaknesses..."):
                     task = practice.generate_task(api_key, model, task_type, weakness_summary())
@@ -261,13 +265,13 @@ with tab_practice:
         with st.container(border=True):
             st.markdown(body)
 
-        draft = st.text_area("✏️ Your response", height=320, key="draft")
+        draft = st.text_area("Your response", height=320, key="draft")
         db.set_meta("active_draft", draft or "")  # autosave on every rerun
-        st.caption("💾 Your task and draft survive a page refresh — close the tab "
+        st.caption("Your task and draft survive a page refresh — close the tab "
                    "and come back any time.")
 
         b1, b2 = st.columns([1, 3])
-        discard = b1.button("🗑 Discard task")
+        discard = b1.button("Discard task")
         submit = b2.button("Submit for grading", type="primary")
 
         if discard:
@@ -304,7 +308,7 @@ with tab_practice:
     elif reuse != "— write a new one —":
         essay_id = int(reuse.split(" · ")[0].lstrip("#"))
         essay = db.get_essay(essay_id)
-        if essay and st.button(f"↩️ Practice #{essay_id} again"):
+        if essay and st.button(f"Practice #{essay_id} again"):
             _start_task({
                 "_type": essay["task_type"],
                 "title": essay["prompt_title"] or "Re-practice",
@@ -320,13 +324,13 @@ with tab_practice:
 
 with tab_drills:
     due = db.due_errors(limit=999)
-    st.caption(f"🔁 {len(due)} logged error(s) due for review — each pass pushes the "
+    st.caption(f"{len(due)} logged error(s) due for review — each pass pushes the "
                "next review further out until the mistake is extinct.")
     if not due:
         st.info("Nothing due right now. Errors become due immediately after grading — "
                 "submit an essay in **Practice**, then come back here.")
 
-    if st.button("🎯 Start drill session", type="primary",
+    if st.button("Start drill session", type="primary",
                  disabled=not due or not api_key):
         try:
             with st.spinner("Building drills from your own mistakes..."):
@@ -345,7 +349,7 @@ with tab_drills:
                     st.selectbox("Pick the best option:", item.get("options", []),
                                  key=f"drill_{i}", index=None, placeholder="Choose…")
                 else:
-                    st.caption(f"✏️ {item.get('sentence', '')}")
+                    st.caption(item.get("sentence", ""))
                     st.text_area("Rewrite the sentence correctly:", key=f"drill_{i}")
                 st.divider()
             submitted = st.form_submit_button("Check my answers", type="primary")
@@ -389,11 +393,12 @@ with tab_drills:
     results = st.session_state.get("drill_results")
     if results:
         n_pass = sum(1 for r in results if r["passed"])
-        st.metric("Session score", f"{n_pass} / {len(results)}")
+        c1, c2 = st.columns([1, 3])
+        c1.metric("Session score", f"{n_pass} / {len(results)}")
         for i, r in enumerate(results):
-            icon = "✅" if r["passed"] else ("⚠️" if r["passed"] is None else "❌")
+            mark = "✔" if r["passed"] else ("·" if r["passed"] is None else "✘")
             with st.container(border=True):
-                st.markdown(f"{icon} **{i + 1} · `{r['item'].get('category', '?')}`**")
+                st.markdown(f"{mark} **{i + 1} · `{r['item'].get('category', '?')}`**")
                 st.caption(f"Rule: {r['item'].get('rule', '')}")
                 st.markdown(f"**Your answer:** {r['user']}")
                 if not r["passed"] and r["correct"]:
@@ -433,7 +438,7 @@ with tab_progress:
                     pd.DataFrame([{"category": s["category"], "count": s["n"]}
                                   for s in stats]).set_index("category"))
             else:
-                st.caption("No logged errors yet 🎉")
+                st.caption("No logged errors yet.")
 
         st.subheader("Lexical profile (computed locally, no LLM)")
         lex_rows = []
@@ -461,47 +466,55 @@ with tab_progress:
         fig.add_trace(go.Scatterpolar(
             r=[first[d] or 0 for d in dims], theta=labels, fill="toself",
             name=f"First essay (#{first['id']})",
+            line=dict(color="#C4B5FD", width=2), fillcolor="rgba(124, 58, 237, 0.07)",
         ))
         fig.add_trace(go.Scatterpolar(
             r=[_avg(recent, d) for d in dims], theta=labels, fill="toself",
             name="Recent average (last 3)",
+            line=dict(color=tfc.PRIMARY, width=3), fillcolor="rgba(124, 58, 237, 0.20)",
         ))
         fig.update_layout(
-            polar={"radialaxis": {"range": [0, 5]}},
-            title="First essay vs recent average",
-            height=420,
+            template="plotly_white",
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="Raleway, sans-serif", color=tfc.TEXT),
+            polar=dict(radialaxis=dict(range=[0, 5], showgrid=True, gridcolor=tfc.BORDER)),
+            legend=dict(orientation="h", y=-0.12),
+            title=dict(text="First essay vs recent average", font=dict(family="Lora, serif")),
+            height=430, margin=dict(l=40, r=40, t=60, b=40),
         )
         c3, c4 = st.columns([3, 2])
         c3.plotly_chart(fig, width="stretch")
         drill = db.drill_stats()
         n_active = len(db.all_errors(status="active", limit=9999))
         n_resolved = len(db.all_errors(status="resolved", limit=9999))
+        streak = insights.streak_days()
         c4.metric("Active error patterns", n_active)
-        c4.metric("Resolved 🎉", n_resolved)
+        c4.metric("Resolved", n_resolved)
         if drill["attempts"]:
             c4.metric("Drill pass rate", f"{round(100 * drill['passed'] / drill['attempts'])}%")
+        c4.metric("Study streak", f"{streak} day{'s' if streak != 1 else ''}")
 
-        st.subheader("🧠 Category mastery & trends")
+        st.subheader("Category mastery & trends")
         mastery = insights.category_mastery()
         if mastery:
             st.dataframe(
                 pd.DataFrame([{
                     "category": r["category"], "total": r["total"],
-                    "active": r["active"], "resolved 🎉": r["resolved"],
+                    "active": r["active"], "resolved": r["resolved"],
                     "last 3 essays": r["recent"], "previous 3": r["before"],
                     "trend": r["trend"],
                 } for r in mastery]),
                 width="stretch", hide_index=True,
             )
             st.caption("Trend compares error counts in your last 3 essays vs the 3 before. "
-                       "Resolve every instance of a pattern (in 🎯 Drills) to make it extinct.")
+                       "Resolve every instance of a pattern (in Drills) to make it extinct.")
         extinct = insights.extinct_patterns()
         if extinct:
-            st.success("🎉 Extinct patterns: " + ", ".join(
+            st.success("Extinct patterns: " + ", ".join(
                 f"**{r['category']}** ({r['total']} fixed)" for r in extinct))
         weakest = insights.weakest_dimension()
         if weakest:
-            st.caption(f"🎯 Lowest rubric dimension (last 3 essays): **{weakest}** — "
+            st.caption(f"Lowest rubric dimension (last 3 essays): **{weakest}** — "
                        "new tasks target it.")
 
         st.subheader("Essay history")
@@ -518,7 +531,7 @@ with tab_progress:
 # ------------------------------------------------------------------ ledger
 
 with tab_ledger:
-    st.subheader("🧠 Learner profile")
+    st.subheader("Learner profile")
     st.caption("Auto-rewritten after each graded essay; edit freely — the examiner "
                "reads it when designing your practice tasks.")
     profile = db.get_meta(
@@ -533,7 +546,7 @@ with tab_ledger:
         st.success("Profile saved.")
 
     st.divider()
-    st.subheader("📒 Error ledger")
+    st.subheader("Error ledger")
     status_filter = st.selectbox("Status", ["active", "resolved", "all"])
     errs = db.all_errors(status=None if status_filter == "all" else status_filter)
     if errs:
@@ -561,7 +574,7 @@ with tab_ledger:
     else:
         st.caption("No errors logged yet — they appear here after your first graded essay.")
 
-    st.subheader("🔁 Overused words across all essays")
+    st.subheader("Overused words across all essays")
     overused = Counter()
     suggestions = {}
     for e in db.list_essays(500):

@@ -1,0 +1,13 @@
+# Streamlit theme — tokens from the TOEFL Writing Coach design system
+# (study purple + success green; see coach/ui.py for the full token set)
+
+[theme]
+base = "light"
+primaryColor = "#7C3AED"
+backgroundColor = "#FAF5FF"
+secondaryBackgroundColor = "#F7F3FD"
+textColor = "#0F172A"
+chartCategoricalColors = ["#7C3AED", "#A78BFA", "#059669", "#D97706", "#DC2626", "#64748B"]
+
+[browser]
+gatherUsageStats = false

@@ -99,18 +99,18 @@ def todays_plan() -> str:
     n_essays = len(db.list_essays(1000))
     due = len(db.due_errors(999))
     if n_essays == 0:
-        return ("1. ✍️ Write your **diagnostic** essay (Academic Discussion, timed)\n"
-                "2. 🔄 Your personalized plan appears here after it's graded")
+        return ("1. Write your **diagnostic** essay (Academic Discussion, timed)\n"
+                "2. Your personalized plan appears here after it's graded")
     weakest = weakest_dimension()
     if weakest:
-        lines = [f"1. ✍️ One timed task — focus on **{weakest}** (your lowest dimension)"]
+        lines = [f"1. One timed task — focus on **{weakest}** (your lowest dimension)"]
     else:
-        lines = ["1. ✍️ One timed task"]
+        lines = ["1. One timed task"]
     if due:
-        lines.append(f"2. 🎯 Drill session — {min(due, 8)} of your logged mistakes are due")
+        lines.append(f"2. Drill session — {min(due, 8)} of your logged mistakes are due")
     else:
-        lines.append("2. 📚 No drills due — grading a new essay creates new ones")
+        lines.append("2. No drills due — grading a new essay creates new ones")
     streak = streak_days()
     if streak >= 2:
-        lines.append(f"🔥 {streak}-day streak — keep it alive")
+        lines.append(f"{streak}-day streak — keep it alive")
     return "\n".join(lines)

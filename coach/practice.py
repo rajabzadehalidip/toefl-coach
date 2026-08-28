@@ -57,20 +57,20 @@ def format_task(task: Dict) -> str:
 
     if kind == "integrated":
         return (
-            f"### 📖 {task.get('title', 'Integrated task')}\n\n"
+            f"### {task.get('title', 'Integrated task')}\n\n"
             f"**READING — {task.get('reading_title', '')}**\n\n"
             f"{task.get('reading_passage', '')}\n\n"
             "---\n\n"
-            f"**🎧 LECTURE (transcript)**\n\n"
+            f"**LECTURE (transcript)**\n\n"
             f"{task.get('lecture_transcript', '')}\n\n"
             f"*{task.get('instructions', '')}*"
         )
 
     # academic discussion
     return (
-        f"### 💬 {task.get('title', 'Discussion')} — {task.get('course', '')}\n\n"
-        f"👩‍🏫 **{task.get('professor', 'Professor')}:** {task.get('professor_question', '')}\n\n"
-        f"🧑 **{task.get('student1', 'Student 1')}:** {task.get('student1_post', '')}\n\n"
-        f"👩 **{task.get('student2', 'Student 2')}:** {task.get('student2_post', '')}\n\n"
+        f"### {task.get('title', 'Discussion')} — {task.get('course', '')}\n\n"
+        f"**{task.get('professor', 'Professor')}:** {task.get('professor_question', '')}\n\n"
+        f"**{task.get('student1', 'Student 1')}:** {task.get('student1_post', '')}\n\n"
+        f"**{task.get('student2', 'Student 2')}:** {task.get('student2_post', '')}\n\n"
         f"*{task.get('instructions', '')}*"
     )
