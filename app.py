@@ -12,7 +12,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from coach import db, drills, grading, lexstats, practice
+from coach import __version__, db, drills, grading, insights, lexstats, practice
 from coach.llm import LLMError
 
 st.set_page_config(page_title="TOEFL Writing Coach", page_icon="✍️", layout="wide")
@@ -64,19 +64,25 @@ with st.sidebar:
     c1.metric("Essays", n_essays)
     c2.metric("Drills due", n_due)
     if db.storage_backend() == "turso":
-        st.caption("🌩 Storage: Turso cloud DB — memory survives restarts")
+        st.caption(f"🌩 Storage: Turso cloud DB — memory survives restarts · v{__version__}")
     else:
-        st.caption("💾 Storage: local `coach.db` — all data stays on this machine")
+        st.caption(f"💾 Storage: local `coach.db` — all data stays on this machine · v{__version__}")
 
 
 def weakness_summary() -> str:
-    """Context the examiner uses to design tasks that target your weak spots."""
+    """Context the examiner uses to design tasks targeting your CURRENT weak spots."""
     parts = []
-    cats = db.error_stats()
-    if cats:
+    weak = insights.active_weaknesses(5)
+    if weak:
         parts.append(
-            "Most frequent error categories: "
-            + ", ".join(f"{c['category']} ({c['n']}×)" for c in cats[:5])
+            "Most frequent UNRESOLVED error categories (design for these): "
+            + ", ".join(f"{r['category']} ({r['total']}×, trend {r['trend']})" for r in weak)
+        )
+    extinct = insights.extinct_patterns()
+    if extinct:
+        parts.append(
+            "Patterns already mastered — do NOT design tasks for these: "
+            + ", ".join(r["category"] for r in extinct)
         )
     profile = db.get_meta("profile")
     if profile:
@@ -169,6 +175,10 @@ with tab_practice:
     if n_essays == 0 and "task" not in st.session_state:
         st.info("🏁 Your first essay doubles as the **diagnostic** — it builds your "
                 "weakness map and error ledger, so make it a real effort.")
+
+    plan = insights.todays_plan()
+    with st.expander("🗓 Today's plan", expanded="task" not in st.session_state):
+        st.markdown(plan)
 
     left, right = st.columns([2, 3])
     reuse = "— write a new one —"
@@ -470,6 +480,29 @@ with tab_progress:
         c4.metric("Resolved 🎉", n_resolved)
         if drill["attempts"]:
             c4.metric("Drill pass rate", f"{round(100 * drill['passed'] / drill['attempts'])}%")
+
+        st.subheader("🧠 Category mastery & trends")
+        mastery = insights.category_mastery()
+        if mastery:
+            st.dataframe(
+                pd.DataFrame([{
+                    "category": r["category"], "total": r["total"],
+                    "active": r["active"], "resolved 🎉": r["resolved"],
+                    "last 3 essays": r["recent"], "previous 3": r["before"],
+                    "trend": r["trend"],
+                } for r in mastery]),
+                width="stretch", hide_index=True,
+            )
+            st.caption("Trend compares error counts in your last 3 essays vs the 3 before. "
+                       "Resolve every instance of a pattern (in 🎯 Drills) to make it extinct.")
+        extinct = insights.extinct_patterns()
+        if extinct:
+            st.success("🎉 Extinct patterns: " + ", ".join(
+                f"**{r['category']}** ({r['total']} fixed)" for r in extinct))
+        weakest = insights.weakest_dimension()
+        if weakest:
+            st.caption(f"🎯 Lowest rubric dimension (last 3 essays): **{weakest}** — "
+                       "new tasks target it.")
 
         st.subheader("Essay history")
         st.dataframe(

@@ -323,6 +323,12 @@ def drill_stats() -> Dict[str, int]:
     return {"attempts": rows[0]["attempts"], "passed": rows[0]["passed"]} if rows else {"attempts": 0, "passed": 0}
 
 
+def drill_days() -> set:
+    """Dates (ISO, YYYY-MM-DD) on which at least one drill was attempted."""
+    rows = _run("SELECT created_at FROM drill_log")["rows"]
+    return {r["created_at"][:10] for r in rows}
+
+
 # ---------------------------------------------------------------- meta
 
 def get_meta(key: str, default: Optional[str] = None) -> Optional[str]:

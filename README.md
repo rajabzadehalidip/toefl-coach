@@ -29,6 +29,27 @@ practice tasks toward your weak spots.
                                  └────▶ profile (consolidated after every essay)
 ```
 
+**How it gets smarter over time** — the coach's intelligence is cumulative:
+
+1. Every graded essay parses your mistakes into a structured **error ledger**
+   (category, original, correction, rule, severity).
+2. Your own mistakes come back as **drills on a spaced-repetition schedule** — pass
+   pushes the next review further out; a pattern with all errors resolved becomes
+   **extinct** 🎉 and is excluded from future practice.
+3. The **examiner targets only your current weaknesses** (it knows which categories
+   are improving, worsening, or extinct) and designs tasks that quietly force you to
+   use the structures you keep getting wrong.
+4. A **profile** is rewritten after every essay, so the tutor remembers your
+   strengths, habits, and goals across sessions.
+5. **Today's plan**, category **mastery & trends**, your rubric score history, and a
+   study **streak** keep the feedback loop visible and motivating.
+
+## Tests
+
+```bash
+python tests/run_tests.py   # 43 checks: DB + SRS, insights, lexstats, JSON parsing, Turso protocol (mocked)
+```
+
 ## Quickstart
 
 ```bash

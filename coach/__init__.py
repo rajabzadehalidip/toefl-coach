@@ -5,4 +5,4 @@ drills your own mistakes back at you on a spaced-repetition schedule,
 and maintains a learner profile across sessions.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
